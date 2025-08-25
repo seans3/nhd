@@ -102,6 +102,7 @@ func main() {
 	// Wrap the entire mux with all middleware
 	var finalMux http.Handler = mux
 	finalMux = middleware.Timeout(finalMux, *timeout)
+	finalMux = middleware.Recover(finalMux) // Recover from panics
 	finalMux = rateLimitMiddleware(finalMux)
 	finalMux = metricsHandler.Middleware(finalMux)
 	finalMux = middleware.Logging(finalMux)
