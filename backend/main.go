@@ -10,6 +10,7 @@ import (
 	firebase "firebase.google.com/go/v4"
 	"github.com/seans3/nhd/backend/api"
 	"github.com/seans3/nhd/backend/datastore"
+	"github.com/seans3/nhd/backend/health"
 	"github.com/seans3/nhd/backend/metrics"
 	"github.com/seans3/nhd/backend/middleware"
 	"github.com/seans3/nhd/backend/publisher"
@@ -66,8 +67,14 @@ func main() {
 	}
 
 	metricsHandler := metrics.NewMetricsHandler()
+	readyzHandler := &health.ReadyzHandler{DS: dsClient}
 
 	mux := http.NewServeMux()
+
+	// Health and Metrics Probes
+	mux.HandleFunc("GET /healthz", health.HealthzHandler)
+	mux.Handle("GET /readyz", readyzHandler)
+	mux.HandleFunc("GET /metrics", metricsHandler.Handler)
 
 	// User
 	mux.Handle("POST /users/register", authClient.RequireAdmin(http.HandlerFunc(apiHandler.RegisterUser)))
@@ -85,9 +92,6 @@ func main() {
 
 	// Financials
 	mux.HandleFunc("GET /financials/summary", apiHandler.GetFinancialsSummary)
-
-	// Metrics Endpoint
-	mux.HandleFunc("GET /metrics", metricsHandler.Handler)
 
 	// Create the rate limiting middleware with the configured values.
 	rateLimitMiddleware := middleware.RateLimit(*rps, *burst)
