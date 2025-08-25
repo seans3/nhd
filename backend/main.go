@@ -9,6 +9,7 @@ import (
 	firebase "firebase.google.com/go/v4"
 	"github.com/seans3/nhd/backend/api"
 	"github.com/seans3/nhd/backend/datastore"
+	"github.com/seans3/nhd/backend/metrics"
 	"github.com/seans3/nhd/backend/middleware"
 	"github.com/seans3/nhd/backend/publisher"
 )
@@ -52,6 +53,8 @@ func main() {
 		DS:       dsClient,
 	}
 
+	metricsHandler := metrics.NewMetricsHandler()
+
 	mux := http.NewServeMux()
 
 	// User
@@ -71,11 +74,16 @@ func main() {
 	// Financials
 	mux.HandleFunc("GET /financials/summary", apiHandler.GetFinancialsSummary)
 
-	// Wrap the entire mux with the logging middleware
-	loggedMux := middleware.Logging(mux)
+	// Metrics Endpoint
+	mux.HandleFunc("GET /metrics", metricsHandler.Handler)
+
+	// Wrap the entire mux with all middleware
+	var finalMux http.Handler = mux
+	finalMux = metricsHandler.Middleware(finalMux)
+	finalMux = middleware.Logging(finalMux)
 
 	log.Println("Starting server on :8080")
-	if err := http.ListenAndServe(":8080", loggedMux); err != nil {
+	if err := http.ListenAndServe(":8080", finalMux); err != nil {
 		log.Fatal(err)
 	}
 }
