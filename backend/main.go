@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	firebase "firebase.google.com/go/v4"
 	"github.com/seans3/nhd/backend/api"
@@ -16,16 +17,18 @@ import (
 	"github.com/seans3/nhd/backend/publisher"
 )
 
-// Define constants for the rate limiter.
+// Define constants for the rate limiter and timeout.
 const (
 	DefaultRateLimitRPS   = 10.0
 	DefaultRateLimitBurst = 20
+	DefaultRequestTimeout = 30 * time.Second
 )
 
 func main() {
-	// Define command-line flags for rate limiter configuration.
+	// Define command-line flags for configuration.
 	rps := flag.Float64("ratelimit.rps", DefaultRateLimitRPS, "Requests per second for the rate limiter")
 	burst := flag.Int("ratelimit.burst", DefaultRateLimitBurst, "Burst size for the rate limiter")
+	timeout := flag.Duration("server.timeout", DefaultRequestTimeout, "Request timeout duration")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -98,6 +101,7 @@ func main() {
 
 	// Wrap the entire mux with all middleware
 	var finalMux http.Handler = mux
+	finalMux = middleware.Timeout(finalMux, *timeout)
 	finalMux = rateLimitMiddleware(finalMux)
 	finalMux = metricsHandler.Middleware(finalMux)
 	finalMux = middleware.Logging(finalMux)
