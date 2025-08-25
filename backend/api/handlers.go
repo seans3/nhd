@@ -5,14 +5,13 @@ import (
 	"net/http"
 
 	"github.com/seans3/nhd/backend/interfaces"
-	"github.com/seans3/nhd/backend/publisher"
 	"github.com/seans3/nhd/backend/proto/gen/go"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type API struct {
 	DS interfaces.Datastore
-	PS *publisher.Client
+	PS interfaces.Publisher
 }
 
 

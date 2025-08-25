@@ -5,7 +5,11 @@ import (
 	"log"
 
 	"cloud.google.com/go/pubsub"
+	"github.com/seans3/nhd/backend/interfaces"
 )
+
+// Statically assert that our client satisfies the interface.
+var _ interfaces.Publisher = (*Client)(nil)
 
 type Client struct {
 	*pubsub.Client

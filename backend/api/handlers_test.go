@@ -4,54 +4,102 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"cloud.google.com/go/firestore"
 	"github.com/seans3/nhd/backend/mocks"
 	"github.com/seans3/nhd/backend/proto/gen/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-func TestAPI_GetCustomers(t *testing.T) {
-	// Create a mock datastore client
+func TestAPI_CreateCustomer(t *testing.T) {
 	mockDS := new(mocks.MockDatastoreClient)
+	apiHandler := &API{DS: mockDS}
 
-	// Create the API handler with the mock client
-	apiHandler := &API{
-		DS: mockDS,
-	}
-
-	// Define the expected data that the mock should return
-	expectedCustomers := []*nhd_report.Customer{
-		{CustomerId: "cust1", FullName: "Alice"},
-		{CustomerId: "cust2", FullName: "Bob"},
-	}
-
-	// Set up the expectation on the mock
-	mockDS.On("GetCustomers", mock.Anything).Return(expectedCustomers, nil)
-
-	// Create a request to pass to our handler
-	req, err := http.NewRequest("GET", "/customers", nil)
+	customerJSON := `{"full_name":"Test User","email":"test@example.com"}`
+	req, err := http.NewRequest("POST", "/customers", strings.NewReader(customerJSON))
 	assert.NoError(t, err)
 
-	// We use httptest.NewRecorder to record the response
-	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(apiHandler.GetCustomers)
+	// We need to return a mock DocumentRef, which is tricky. For a unit test,
+	// returning a simple struct with the ID is sufficient.
+	mockDocRef := &firestore.DocumentRef{ID: "test-id"}
+	
+	// We don't care about the WriteResult in this test, so we can return nil.
+	mockDS.On("CreateCustomer", mock.Anything, mock.AnythingOfType("*nhd_report.Customer")).Return(mockDocRef, (*firestore.WriteResult)(nil), nil)
 
-	// Our handlers satisfy http.Handler, so we can call their ServeHTTP method
-	// directly and pass in our Request and ResponseRecorder.
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(apiHandler.CreateCustomer)
 	handler.ServeHTTP(rr, req)
 
-	// Check the status code is what we expect.
-	assert.Equal(t, http.StatusOK, rr.Code)
-
-	// Check the response body is what we expect.
-	var actualCustomers []*nhd_report.Customer
-	err = json.Unmarshal(rr.Body.Bytes(), &actualCustomers)
-	assert.NoError(t, err)
-	assert.Equal(t, len(expectedCustomers), len(actualCustomers))
-	assert.Equal(t, expectedCustomers[0].FullName, actualCustomers[0].FullName)
-
-	// Assert that the expectations were met
+	assert.Equal(t, http.StatusCreated, rr.Code)
+	assert.Contains(t, rr.Body.String(), `"customer_id":"test-id"`)
 	mockDS.AssertExpectations(t)
 }
+
+func TestAPI_GetReportRuns(t *testing.T) {
+	mockDS := new(mocks.MockDatastoreClient)
+	apiHandler := &API{DS: mockDS}
+
+	expectedReports := []*nhd_report.ReportRun{
+		{ReportRunId: "run1"},
+		{ReportRunId: "run2"},
+	}
+
+	mockDS.On("GetReportRuns", mock.Anything, "").Return(expectedReports, nil)
+
+	req, err := http.NewRequest("GET", "/report-runs", nil)
+	assert.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(apiHandler.GetReportRuns)
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	var actualReports []*nhd_report.ReportRun
+	err = json.Unmarshal(rr.Body.Bytes(), &actualReports)
+	assert.NoError(t, err)
+	assert.Equal(t, len(expectedReports), len(actualReports))
+	mockDS.AssertExpectations(t)
+}
+
+func TestAPI_UpdateReportCost(t *testing.T) {
+	mockDS := new(mocks.MockDatastoreClient)
+	apiHandler := &API{DS: mockDS}
+
+	costJSON := `{"amount":99.99,"currency":"USD"}`
+	req, err := http.NewRequest("PUT", "/report-runs/run123/cost", strings.NewReader(costJSON))
+	assert.NoError(t, err)
+	req.SetPathValue("id", "run123") // Set path value for Go 1.22+ mux
+
+	mockDS.On("UpdateReportCost", mock.Anything, "run123", mock.AnythingOfType("*nhd_report.ReportRun_ReportCost")).Return(nil)
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(apiHandler.UpdateReportCost)
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	mockDS.AssertExpectations(t)
+}
+
+func TestAPI_RecordReportPayment(t *testing.T) {
+	mockDS := new(mocks.MockDatastoreClient)
+	apiHandler := &API{DS: mockDS}
+
+	paymentJSON := `{"amount_paid":99.99,"currency":"USD"}`
+	req, err := http.NewRequest("POST", "/report-runs/run123/payment", strings.NewReader(paymentJSON))
+	assert.NoError(t, err)
+	req.SetPathValue("id", "run123")
+
+	mockDS.On("RecordReportPayment", mock.Anything, "run123", mock.AnythingOfType("*nhd_report.ReportRun_Payment")).Return(nil)
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(apiHandler.RecordReportPayment)
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	mockDS.AssertExpectations(t)
+}
+
+
