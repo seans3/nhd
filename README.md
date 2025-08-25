@@ -37,125 +37,124 @@ The architecture consists of several key components:
 
 Protocol Buffers (Protobufs) are used as the canonical data format throughout the system, ensuring type safety and consistency between the Go and Python services.
 
-bash
 ```
-syntax \= "proto3";
+syntax = "proto3";
 
 package nhdreport;
 
 import "google/protobuf/timestamp.proto";
 
-// \========== User \==========  
-message Permissions {  
-  bool can\_create\_customers \= 1;  
-  bool can\_generate\_reports \= 2;  
-  bool is\_admin \= 3;  
-}  
-message User {  
-  string user\_id \= 1; // Firebase Auth UID  
-  string full\_name \= 2;  
-  string email \= 3;  
-  Permissions permissions \= 4;  
-  google.protobuf.Timestamp created\_at \= 5;  
+// ========== User ==========
+message Permissions {
+  bool can_create_customers = 1;
+  bool can_generate_reports = 2;
+  bool is_admin = 3;
+}
+message User {
+  string user_id = 1; // Firebase Auth UID
+  string full_name = 2;
+  string email = 3;
+  Permissions permissions = 4;
+  google.protobuf.Timestamp created_at = 5;
 }
 
-// \========== Customer \==========  
-message Customer {  
-  string customer\_id \= 1;  
-  string full\_name \= 2;  
-  string email \= 3;  
-  string company\_name \= 4;  
-  google.protobuf.Timestamp created\_at \= 5;  
-  string created\_by\_user\_id \= 6;  
+// ========== Customer ==========
+message Customer {
+  string customer_id = 1;
+  string full_name = 2;
+  string email = 3;
+  string company_name = 4;
+  google.protobuf.Timestamp created_at = 5;
+  string created_by_user_id = 6;
 }
 
-// \========== Property Address \==========  
-message PropertyAddress {  
-  string property\_address\_id \= 1;  
-  message AddressDetails {  
-    string street\_address \= 1;  
-    string street\_address\_2 \= 2;  
-    string city \= 3;  
-    string state \= 4;  
-    string zip\_code \= 5;  
-    string zip\_plus\_4 \= 6;  
-  }  
-  AddressDetails address\_details \= 2;  
-  message Coordinates {  
-    double latitude \= 1;  
-    double longitude \= 2;  
-  }  
-  Coordinates coordinates \= 3;  
-  string plus\_code \= 4;  
-  string google\_place\_id \= 5;  
+// ========== Property Address ==========
+message PropertyAddress {
+  string property_address_id = 1;
+  message AddressDetails {
+    string street_address = 1;
+    string street_address_2 = 2;
+    string city = 3;
+    string state = 4;
+    string zip_code = 5;
+    string zip_plus_4 = 6;
+  }
+  AddressDetails address_details = 2;
+  message Coordinates {
+    double latitude = 1;
+    double longitude = 2;
+  }
+  Coordinates coordinates = 3;
+  string plus_code = 4;
+  string google_place_id = 5;
 }
 
-// \========== Report Run \==========  
-message ReportRun {  
-  string report\_run\_id \= 1;  
-  string customer\_id \= 2;  
-  // The ID of the internal user who created the report run on behalf of a customer.  
-  // This field is optional. If it's not set, it implies the customer  
-  // (identified by customer\_id) created the report for themselves.  
-  string created\_by\_user\_id \= 3;  
-  string property\_address\_id \= 4;  
-  google.protobuf.Timestamp created\_at \= 5;  
-  enum Status {  
-    STATUS\_UNSPECIFIED \= 0;  
-    PENDING \= 1;  
-    PROCESSING \= 2;  
-    COMPLETED \= 3;  
-    FAILED \= 4;  
-  }  
-  Status status \= 6;  
-  message HazardResults {  
-    bool in\_special\_flood\_hazard\_area \= 1;  
-    bool in\_dam\_inundation\_area \= 2;  
-    bool in\_very\_high\_fire\_hazard\_severity\_zone \= 3;  
-    bool in\_wildland\_fire\_area \= 4;  
-    bool in\_earthquake\_fault\_zone \= 5;  
-    bool in\_seismic\_hazard\_zone \= 6;  
-  }  
-  HazardResults results \= 7;  
-  string template\_reference \= 8;  
-  string final\_pdf\_storage\_path \= 9;  
-  message EmailDelivery {  
-    enum DeliveryStatus {  
-      STATUS\_UNSPECIFIED \= 0;  
-      SENT \= 1;  
-      FAILED \= 2;  
-    }  
-    DeliveryStatus status \= 1;  
-    google.protobuf.Timestamp sent\_at \= 2;  
-    string email\_template\_reference \= 3;  
-  }  
-  repeated EmailDelivery email\_deliveries \= 10;  
-  bool disable\_automatic\_email \= 11;
+// ========== Report Run ==========
+message ReportRun {
+  string report_run_id = 1;
+  string customer_id = 2;
+  // The ID of the internal user who created the report run on behalf of a customer.
+  // This field is optional. If it's not set, it implies the customer
+  // (identified by customer_id) created the report for themselves.
+  string created_by_user_id = 3;
+  string property_address_id = 4;
+  google.protobuf.Timestamp created_at = 5;
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    PENDING = 1;
+    PROCESSING = 2;
+    COMPLETED = 3;
+    FAILED = 4;
+  }
+  Status status = 6;
+  message HazardResults {
+    bool in_special_flood_hazard_area = 1;
+    bool in_dam_inundation_area = 2;
+    bool in_very_high_fire_hazard_severity_zone = 3;
+    bool in_wildland_fire_area = 4;
+    bool in_earthquake_fault_zone = 5;
+    bool in_seismic_hazard_zone = 6;
+  }
+  HazardResults results = 7;
+  string template_reference = 8;
+  string final_pdf_storage_path = 9;
+  message EmailDelivery {
+    enum DeliveryStatus {
+      STATUS_UNSPECIFIED = 0;
+      SENT = 1;
+      FAILED = 2;
+    }
+    DeliveryStatus status = 1;
+    google.protobuf.Timestamp sent_at = 2;
+    string email_template_reference = 3;
+  }
+  repeated EmailDelivery email_deliveries = 10;
+  bool disable_automatic_email = 11;
 
-  // Financials  
-  message ReportCost {  
-    double amount \= 1;  
-    string currency \= 2; // e.g., "USD"  
-    google.protobuf.Timestamp set\_at \= 3;  
-    string set\_by\_user\_id \= 4;  
-  }  
-  repeated ReportCost cost\_history \= 12; // Complete, auditable history of cost changes.
+  // Financials
+  message ReportCost {
+    double amount = 1;
+    string currency = 2; // e.g., "USD"
+    google.protobuf.Timestamp set_at = 3;
+    string set_by_user_id = 4;
+  }
+  repeated ReportCost cost_history = 12; // Complete, auditable history of cost changes.
 
-  message Payment {  
-    enum PaymentStatus {  
-      PAYMENT\_STATUS\_UNSPECIFIED \= 0;  
-      OUTSTANDING \= 1;  
-      PAID \= 2;  
-      REFUNDED \= 3;  
-    }  
-    PaymentStatus status \= 1;  
-    double amount\_paid \= 2;  
-    string currency \= 3;  
-    google.protobuf.Timestamp paid\_at \= 4;  
-    string payment\_method \= 5; // e.g., "Stripe", "Manual"  
-    string transaction\_id \= 6;  
-  }  
-  Payment payment\_details \= 13;  
+  message Payment {
+    enum PaymentStatus {
+      PAYMENT_STATUS_UNSPECIFIED = 0;
+      OUTSTANDING = 1;
+      PAID = 2;
+      REFUNDED = 3;
+    }
+    PaymentStatus status = 1;
+    double amount_paid = 2;
+    string currency = 3;
+    google.protobuf.Timestamp paid_at = 4;
+    string payment_method = 5; // e.g., "Stripe", "Manual"
+    string transaction_id = 6;
+  }
+  Payment payment_details = 13;
 }
 ```
 
