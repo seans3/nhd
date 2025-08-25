@@ -13,6 +13,20 @@ type Client struct {
 	*firestore.Client
 }
 
+// FinancialsSummary holds the aggregated financial data.
+type FinancialsSummary struct {
+	TotalRevenue float64        `json:"total_revenue"`
+	PaidReports  []PaidReportInfo `json:"paid_reports"`
+}
+
+// PaidReportInfo holds data for a single paid report.
+type PaidReportInfo struct {
+	CustomerName      string  `json:"customer_name"`
+	PropertyAddress   string  `json:"property_address"`
+	AmountPaid        float64 `json:"amount_paid"`
+	PaidAt            string  `json:"paid_at"`
+}
+
 func NewClient(ctx context.Context, projectID string) (*Client, error) {
 	fsClient, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
@@ -48,4 +62,46 @@ func (c *Client) GetCustomers(ctx context.Context) ([]*nhd_report.Customer, erro
 
 func (c *Client) CreateReportRun(ctx context.Context, reportRun *nhd_report.ReportRun) (*firestore.DocumentRef, *firestore.WriteResult, error) {
 	return c.Collection("report_runs").Add(ctx, reportRun)
+}
+
+func (c *Client) GetPaidReportsSummary(ctx context.Context) (*FinancialsSummary, error) {
+	summary := &FinancialsSummary{}
+	var totalRevenue float64
+
+	// Query for paid reports
+	iter := c.Collection("report_runs").Where("payment_details.status", "==", nhd_report.ReportRun_Payment_PAID).Documents(ctx)
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		var reportRun nhd_report.ReportRun
+		if err := doc.DataTo(&reportRun); err != nil {
+			// Log the error but continue if possible
+			log.Printf("Failed to unmarshal report run: %v", err)
+			continue
+		}
+
+		if reportRun.PaymentDetails != nil {
+			totalRevenue += reportRun.PaymentDetails.AmountPaid
+
+			// For simplicity, we are not fetching customer and address details in this example.
+			// In a real application, you would fetch the customer and property address documents
+			// using the IDs from the reportRun to get the full name and address string.
+			paidReport := PaidReportInfo{
+				CustomerName:      "Customer " + reportRun.CustomerId, // Placeholder
+				PropertyAddress:   "Address for " + reportRun.PropertyAddressId, // Placeholder
+				AmountPaid:        reportRun.PaymentDetails.AmountPaid,
+				PaidAt:            reportRun.PaymentDetails.PaidAt.AsTime().Format("2006-01-02"),
+			}
+			summary.PaidReports = append(summary.PaidReports, paidReport)
+		}
+	}
+
+	summary.TotalRevenue = totalRevenue
+	return summary, nil
 }

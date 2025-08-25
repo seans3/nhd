@@ -5,48 +5,6 @@ import (
 	"net/http"
 
 	"github.com/seans3/nhd/backend/datastore"
-	"github.com/seans3/nhd/proto/gen/go;nhd_report"
-)
-
-type API struct {
-	DS *datastore.Client
-}
-
-// Users
-func (a *API) RegisterUser(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Customers
-func (a *API) CreateCustomer(w http.ResponseWriter, r *http.Request) {
-	var customer nhd_report.Customer
-	if err := json.NewDecoder(r.Body).Decode(&customer); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	docRef, _, err := a.DS.CreateCustomer(r.Context(), &customer)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"customer_id": docRef.ID})
-}
-
-func (a *API) GetCustomers(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Report Runs
-package api
-
-import (
-	"encoding/json"
-	"net/http"
-
-	"github.com/seans3/nhd/backend/datastore"
 	"github.com/seans3/nhd/backend/publisher"
 	"github.com/seans3/nhd/proto/gen/go;nhd_report"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -136,29 +94,13 @@ func (a *API) RecordReportPayment(w http.ResponseWriter, r *http.Request) {
 
 // Financials
 func (a *API) GetFinancialsSummary(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
+	summary, err := a.DS.GetPaidReportsSummary(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-func (a *API) GetReportRuns(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-func (a *API) ResendReportEmail(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-func (a *API) UpdateReportCost(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-func (a *API) RecordReportPayment(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Financials
-func (a *API) GetFinancialsSummary(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(summary)
 }
