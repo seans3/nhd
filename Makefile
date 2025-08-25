@@ -41,6 +41,12 @@ proto: reporter-install-deps ## Generate Go and Python code from proto definitio
 	@echo "Protobuf code generated."
 
 # ====================================================================================
+# TESTING
+# ====================================================================================
+
+test: backend-test ## Run all unit tests for the Go backend
+
+# ====================================================================================
 # GO BACKEND
 # ====================================================================================
 
@@ -76,6 +82,9 @@ frontend-build: frontend-install ## Build the frontend for production
 	@echo "--- Building frontend..."
 	@cd frontend && npm run build
 	@echo "Frontend built."
+
+
+
 
 # ====================================================================================
 # PYTHON REPORTER
