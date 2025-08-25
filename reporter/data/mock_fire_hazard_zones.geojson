@@ -1,0 +1,23 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "HAZ_CLASS": "Very High"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-122.44, 37.79],
+            [-122.42, 37.79],
+            [-122.42, 37.77],
+            [-122.44, 37.77],
+            [-122.44, 37.79]
+          ]
+        ]
+      }
+    }
+  ]
+}
