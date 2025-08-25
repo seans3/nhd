@@ -37,6 +37,8 @@ The architecture consists of several key components:
 
 Protocol Buffers (Protobufs) are used as the canonical data format throughout the system, ensuring type safety and consistency between the Go and Python services.
 
+bash
+```
 syntax \= "proto3";
 
 package nhdreport;
@@ -155,6 +157,7 @@ message ReportRun {
   }  
   Payment payment\_details \= 13;  
 }
+```
 
 ## **API Endpoints**
 
