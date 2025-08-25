@@ -71,8 +71,11 @@ func main() {
 	// Financials
 	mux.HandleFunc("GET /financials/summary", apiHandler.GetFinancialsSummary)
 
+	// Wrap the entire mux with the logging middleware
+	loggedMux := middleware.Logging(mux)
+
 	log.Println("Starting server on :8080")
-	if err := http.ListenAndServe(":8080", mux); err != nil {
+	if err := http.ListenAndServe(":8080", loggedMux); err != nil {
 		log.Fatal(err)
 	}
 }
