@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -14,7 +15,18 @@ import (
 	"github.com/seans3/nhd/backend/publisher"
 )
 
+// Define constants for the rate limiter.
+const (
+	DefaultRateLimitRPS   = 10.0
+	DefaultRateLimitBurst = 20
+)
+
 func main() {
+	// Define command-line flags for rate limiter configuration.
+	rps := flag.Float64("ratelimit.rps", DefaultRateLimitRPS, "Requests per second for the rate limiter")
+	burst := flag.Int("ratelimit.burst", DefaultRateLimitBurst, "Burst size for the rate limiter")
+	flag.Parse()
+
 	ctx := context.Background()
 	projectID := os.Getenv("GOOGLE_CLOUD_PROJECT")
 	if projectID == "" {
@@ -77,12 +89,16 @@ func main() {
 	// Metrics Endpoint
 	mux.HandleFunc("GET /metrics", metricsHandler.Handler)
 
+	// Create the rate limiting middleware with the configured values.
+	rateLimitMiddleware := middleware.RateLimit(*rps, *burst)
+
 	// Wrap the entire mux with all middleware
 	var finalMux http.Handler = mux
+	finalMux = rateLimitMiddleware(finalMux)
 	finalMux = metricsHandler.Middleware(finalMux)
 	finalMux = middleware.Logging(finalMux)
 
-	log.Println("Starting server on :8080")
+	log.Printf("Starting server on :8080 with rate limit of %.2f rps and a burst of %d", *rps, *burst)
 	if err := http.ListenAndServe(":8080", finalMux); err != nil {
 		log.Fatal(err)
 	}
