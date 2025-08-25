@@ -30,4 +30,6 @@ type Datastore interface {
 	UpdateReportCost(ctx context.Context, reportRunID string, newCost *nhd_report.ReportRun_ReportCost) error
 	RecordReportPayment(ctx context.Context, reportRunID string, payment *nhd_report.ReportRun_Payment) error
 	GetPaidReportsSummary(ctx context.Context) (*FinancialsSummary, error)
+	GetUserByID(ctx context.Context, uid string) (*nhd_report.User, error)
+	CreateUser(ctx context.Context, user *nhd_report.User) error
 }

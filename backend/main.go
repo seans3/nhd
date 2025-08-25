@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"os"
 
+	firebase "firebase.google.com/go/v4"
 	"github.com/seans3/nhd/backend/api"
 	"github.com/seans3/nhd/backend/datastore"
+	"github.com/seans3/nhd/backend/middleware"
 	"github.com/seans3/nhd/backend/publisher"
 )
 
@@ -16,6 +18,16 @@ func main() {
 	projectID := os.Getenv("GOOGLE_CLOUD_PROJECT")
 	if projectID == "" {
 		log.Fatal("GOOGLE_CLOUD_PROJECT environment variable must be set")
+	}
+
+	// Initialize Firebase Admin SDK
+	firebaseApp, err := firebase.NewApp(ctx, nil)
+	if err != nil {
+		log.Fatalf("error initializing Firebase app: %v\n", err)
+	}
+	firebaseAuth, err := firebaseApp.Auth(ctx)
+	if err != nil {
+		log.Fatalf("error getting Firebase Auth client: %v\n", err)
 	}
 
 	dsClient, err := datastore.NewClient(ctx, projectID)
@@ -35,10 +47,15 @@ func main() {
 		PS: psClient,
 	}
 
+	authClient := &middleware.AuthClient{
+		Firebase: firebaseAuth,
+		DS:       dsClient,
+	}
+
 	mux := http.NewServeMux()
 
 	// User
-	mux.HandleFunc("POST /users/register", apiHandler.RegisterUser)
+	mux.Handle("POST /users/register", authClient.RequireAdmin(http.HandlerFunc(apiHandler.RegisterUser)))
 
 	// Customers
 	mux.HandleFunc("POST /customers", apiHandler.CreateCustomer)

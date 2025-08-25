@@ -144,3 +144,20 @@ func (c *Client) GetPaidReportsSummary(ctx context.Context) (*interfaces.Financi
 	summary.TotalRevenue = totalRevenue
 	return summary, nil
 }
+
+func (c *Client) GetUserByID(ctx context.Context, uid string) (*nhd_report.User, error) {
+	doc, err := c.Collection("users").Doc(uid).Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var user nhd_report.User
+	if err := doc.DataTo(&user); err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (c *Client) CreateUser(ctx context.Context, user *nhd_report.User) error {
+	_, err := c.Collection("users").Doc(user.UserId).Set(ctx, user)
+	return err
+}

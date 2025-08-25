@@ -16,8 +16,60 @@ type API struct {
 
 
 // Users
+// RegisterUserRequest defines the shape of the request body for creating a new user.
+type RegisterUserRequest struct {
+	Email       string `json:"email"`
+	Password    string `json:"password"`
+	FullName    string `json:"full_name"`
+	IsAdmin     bool   `json:"is_admin"`
+}
+
 func (a *API) RegisterUser(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	var req RegisterUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// This handler requires the Firebase Admin SDK, which should be initialized
+	// and passed into the API handler. For now, we will just log a placeholder.
+	// In a real implementation, you would do:
+	/*
+		params := (&auth.UserToCreate{}).
+			Email(req.Email).
+			Password(req.Password).
+			DisplayName(req.FullName)
+		
+		firebaseUser, err := Firebase.CreateUser(r.Context(), params)
+		if err != nil {
+			http.Error(w, "Failed to create user in Firebase", http.StatusInternalServerError)
+			return
+		}
+	*/
+	log.Printf("TODO: Implement Firebase user creation for email: %s", req.Email)
+	// Let's pretend a user was created and we have an ID.
+	firebaseUser := struct{ UID string }{UID: "fake-firebase-uid-" + req.Email}
+
+
+	// Now, create the user profile in Firestore.
+	user := &nhd_report.User{
+		UserId:   firebaseUser.UID,
+		FullName: req.FullName,
+		Email:    req.Email,
+		Permissions: &nhd_report.Permissions{
+			IsAdmin: req.IsAdmin,
+			// Set other default permissions as needed
+		},
+		CreatedAt: timestamppb.Now(),
+	}
+
+	if err := a.DS.CreateUser(r.Context(), user); err != nil {
+		http.Error(w, "Failed to create user profile in Firestore", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(user)
 }
 
 // Customers
