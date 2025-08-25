@@ -83,6 +83,10 @@ frontend-build: frontend-install ## Build the frontend for production
 	@cd frontend && npm run build
 	@echo "Frontend built."
 
+frontend-test: frontend-install ## Run unit tests for the frontend
+	@echo "--- Testing frontend..."
+	@cd frontend && npm test -- --watchAll=false
+
 
 
 
