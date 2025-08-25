@@ -36,14 +36,26 @@ func setupIntegrationTestServer() (*httptest.Server, interfaces.Datastore, *mock
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /customers", apiHandler.GetCustomers)
-	mux.HandleFunc("POST /customers", apiHandler.CreateCustomer)
-	mux.HandleFunc("POST /report-runs", apiHandler.CreateReportRun)
-	mux.HandleFunc("GET /report-runs", apiHandler.GetReportRuns)
-	mux.HandleFunc("PUT /report-runs/{id}/cost", apiHandler.UpdateReportCost)
-	mux.HandleFunc("POST /report-runs/{id}/payment", apiHandler.RecordReportPayment)
-	mux.HandleFunc("GET /financials/summary", apiHandler.GetFinancialsSummary)
-	mux.Handle("POST /users/register", authClient.RequireAdmin(http.HandlerFunc(apiHandler.RegisterUser)))
+	// Health and Metrics Probes (public)
+	// mux.HandleFunc("GET /healthz", health.HealthzHandler)
+	// mux.Handle("GET /readyz", readyzHandler)
+	// mux.HandleFunc("GET /metrics", metricsHandler.Handler)
+
+	// Standard authenticated API routes
+	apiMux := http.NewServeMux()
+	apiMux.HandleFunc("POST /customers", apiHandler.CreateCustomer)
+	apiMux.HandleFunc("GET /customers", apiHandler.GetCustomers)
+	apiMux.HandleFunc("POST /report-runs", apiHandler.CreateReportRun)
+	apiMux.HandleFunc("GET /report-runs", apiHandler.GetReportRuns)
+	apiMux.HandleFunc("GET /financials/summary", apiHandler.GetFinancialsSummary)
+	mux.Handle("/api/", http.StripPrefix("/api", authClient.VerifyAuthToken(apiMux)))
+
+	// Admin-only API routes
+	adminMux := http.NewServeMux()
+	adminMux.HandleFunc("POST /users/register", apiHandler.RegisterUser)
+	adminMux.HandleFunc("PUT /report-runs/{id}/cost", apiHandler.UpdateReportCost)
+	adminMux.HandleFunc("POST /report-runs/{id}/payment", apiHandler.RecordReportPayment)
+	mux.Handle("/admin/", http.StripPrefix("/admin", authClient.RequireAdmin(adminMux)))
 
 	server := httptest.NewServer(mux)
 	cleanup := func() {
@@ -54,12 +66,21 @@ func setupIntegrationTestServer() (*httptest.Server, interfaces.Datastore, *mock
 }
 
 func TestIntegration_CreateAndGetCustomers(t *testing.T) {
-	server, _, _, _, cleanup := setupIntegrationTestServer()
+	server, _, _, mockAuth, cleanup := setupIntegrationTestServer()
 	defer cleanup()
+
+	// Mock the auth token verification
+	mockAuth.On("VerifyIDToken", mock.Anything, "valid-token").Return(&auth.Token{UID: "test-user"}, nil)
 
 	// 1. Create a new customer
 	customerToCreate := `{"full_name":"Charlie Integration","email":"charlie@it.com"}`
-	resp, err := http.Post(server.URL+"/customers", "application/json", bytes.NewBufferString(customerToCreate))
+	req, err := http.NewRequest("POST", server.URL+"/api/customers", bytes.NewBufferString(customerToCreate))
+	assert.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer valid-token")
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 	defer resp.Body.Close()
@@ -71,7 +92,11 @@ func TestIntegration_CreateAndGetCustomers(t *testing.T) {
 	assert.NotEmpty(t, newCustomerID)
 
 	// 2. Get all customers and verify the new one is there
-	resp, err = http.Get(server.URL + "/customers")
+	req, err = http.NewRequest("GET", server.URL+"/api/customers", nil)
+	assert.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer valid-token")
+	
+	resp, err = client.Do(req)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	defer resp.Body.Close()
@@ -85,11 +110,14 @@ func TestIntegration_CreateAndGetCustomers(t *testing.T) {
 }
 
 func TestIntegration_FullReportLifecycle(t *testing.T) {
-	server, memDS, mockPS, _, cleanup := setupIntegrationTestServer()
+	server, memDS, mockPS, mockAuth, cleanup := setupIntegrationTestServer()
 	defer cleanup()
 
-	// 1. Create a customer first
-	customer := &nhd_report.Customer{FullName: "Test Customer"}
+	// Mock the auth token verification for all API calls in this test
+	mockAuth.On("VerifyIDToken", mock.Anything, "valid-token").Return(&auth.Token{UID: "test-user"}, nil)
+
+	// 1. Create a customer first (directly in memstore for simplicity)
+	customer := &nhd_report.Customer{FullName: "Test Customer", CreatedByUserId: "test-user"}
 	docRef, _, err := memDS.CreateCustomer(context.Background(), customer)
 	assert.NoError(t, err)
 	customerID := docRef.ID
@@ -98,7 +126,13 @@ func TestIntegration_FullReportLifecycle(t *testing.T) {
 	reportRunJSON := `{"customer_id":"` + customerID + `","property_address_id":"addr123"}`
 	mockPS.On("Publish", mock.Anything, "nhd-report-requests", mock.Anything).Return("pub-msg-id", nil)
 
-	resp, err := http.Post(server.URL+"/report-runs", "application/json", bytes.NewBufferString(reportRunJSON))
+	req, err := http.NewRequest("POST", server.URL+"/api/report-runs", bytes.NewBufferString(reportRunJSON))
+	assert.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer valid-token")
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 	defer resp.Body.Close()
@@ -110,7 +144,11 @@ func TestIntegration_FullReportLifecycle(t *testing.T) {
 	assert.NotEmpty(t, reportID)
 
 	// 4. Get all reports and verify the new one is there
-	resp, err = http.Get(server.URL + "/report-runs")
+	req, err = http.NewRequest("GET", server.URL+"/api/report-runs", nil)
+	assert.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer valid-token")
+
+	resp, err = client.Do(req)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	defer resp.Body.Close()
@@ -121,13 +159,18 @@ func TestIntegration_FullReportLifecycle(t *testing.T) {
 	assert.Len(t, reports, 1)
 	assert.Equal(t, reportID, reports[0].ReportRunId)
 
-	// 5. Update the cost of the report
-	costJSON := `{"amount":123.45, "currency": "USD"}`
-	req, err := http.NewRequest("PUT", server.URL+"/report-runs/"+reportID+"/cost", bytes.NewBufferString(costJSON))
+	// 5. Update the cost of the report (Admin Task)
+	mockAuth.On("VerifyIDToken", mock.Anything, "valid-admin-token").Return(&auth.Token{UID: "admin-uid"}, nil)
+	adminUser := &nhd_report.User{UserId: "admin-uid", Permissions: &nhd_report.Permissions{IsAdmin: true}}
+	err = memDS.CreateUser(context.Background(), adminUser)
 	assert.NoError(t, err)
+
+	costJSON := `{"amount":123.45, "currency": "USD"}`
+	req, err = http.NewRequest("PUT", server.URL+"/admin/report-runs/"+reportID+"/cost", bytes.NewBufferString(costJSON))
+	assert.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer valid-admin-token")
 	req.Header.Set("Content-Type", "application/json")
 	
-	client := &http.Client{}
 	resp, err = client.Do(req)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -140,15 +183,24 @@ func TestIntegration_FullReportLifecycle(t *testing.T) {
 	assert.Len(t, updatedReport[0].CostHistory, 1)
 	assert.Equal(t, 123.45, updatedReport[0].CostHistory[0].Amount)
 
-	// 7. Record a payment for the report
+	// 7. Record a payment for the report (Admin Task)
 	paymentJSON := `{"amount_paid":123.45, "status": 2}` // PAID = 2
-	resp, err = http.Post(server.URL+"/report-runs/"+reportID+"/payment", "application/json", bytes.NewBufferString(paymentJSON))
+	req, err = http.NewRequest("POST", server.URL+"/admin/report-runs/"+reportID+"/payment", bytes.NewBufferString(paymentJSON))
+	assert.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer valid-admin-token")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err = client.Do(req)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	defer resp.Body.Close()
 
 	// 8. Get the financials summary and verify the payment is included
-	resp, err = http.Get(server.URL + "/financials/summary")
+	req, err = http.NewRequest("GET", server.URL+"/api/financials/summary", nil)
+	assert.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer valid-token")
+
+	resp, err = client.Do(req)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	defer resp.Body.Close()
@@ -174,7 +226,7 @@ func TestIntegration_RegisterUser_FullFlow(t *testing.T) {
 
 	// 2. Prepare and make the request
 	newUserJSON := `{"email":"newuser@example.com","password":"password","full_name":"New User"}`
-	req, err := http.NewRequest("POST", server.URL+"/users/register", bytes.NewBufferString(newUserJSON))
+	req, err := http.NewRequest("POST", server.URL+"/admin/users/register", bytes.NewBufferString(newUserJSON))
 	assert.NoError(t, err)
 	req.Header.Set("Authorization", "Bearer valid-non-admin-token")
 	req.Header.Set("Content-Type", "application/json")
@@ -195,7 +247,7 @@ func TestIntegration_RegisterUser_FullFlow(t *testing.T) {
 	assert.NoError(t, err)
 
 	// 2. Prepare and make the request again, this time as an admin
-	req, err = http.NewRequest("POST", server.URL+"/users/register", bytes.NewBufferString(newUserJSON))
+	req, err = http.NewRequest("POST", server.URL+"/admin/users/register", bytes.NewBufferString(newUserJSON))
 	assert.NoError(t, err)
 	req.Header.Set("Authorization", "Bearer valid-admin-token")
 	req.Header.Set("Content-Type", "application/json")

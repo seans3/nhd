@@ -19,7 +19,7 @@ type ContextKey string
 
 const UserIDKey ContextKey = "userID"
 
-func (ac *AuthClient) VerifyFirebaseToken(next http.Handler) http.Handler {
+func (ac *AuthClient) VerifyAuthToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
@@ -48,7 +48,7 @@ func (ac *AuthClient) VerifyFirebaseToken(next http.Handler) http.Handler {
 }
 
 func (ac *AuthClient) RequireAdmin(next http.Handler) http.Handler {
-	return ac.VerifyFirebaseToken(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return ac.VerifyAuthToken(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		uid, ok := r.Context().Value(UserIDKey).(string)
 		if !ok {
 			// This should not happen if VerifyFirebaseToken runs first

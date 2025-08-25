@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/seans3/nhd/backend/interfaces"
+	"github.com/seans3/nhd/backend/middleware"
 	"github.com/seans3/nhd/backend/proto/gen/go"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -14,7 +15,6 @@ type API struct {
 	DS interfaces.Datastore
 	PS interfaces.Publisher
 }
-
 
 // Users
 // RegisterUserRequest defines the shape of the request body for creating a new user.
@@ -51,7 +51,6 @@ func (a *API) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	// Let's pretend a user was created and we have an ID.
 	firebaseUser := struct{ UID string }{UID: "fake-firebase-uid-" + req.Email}
 
-
 	// Now, create the user profile in Firestore.
 	user := &nhd_report.User{
 		UserId:   firebaseUser.UID,
@@ -80,6 +79,14 @@ func (a *API) CreateCustomer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	// Get the user ID from the context (set by the auth middleware)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok {
+		http.Error(w, "User ID not found in context", http.StatusUnauthorized)
+		return
+	}
+	customer.CreatedByUserId = userID
 
 	docRef, _, err := a.DS.CreateCustomer(r.Context(), &customer)
 	if err != nil {
@@ -110,6 +117,13 @@ func (a *API) CreateReportRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get the user ID from the context
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok {
+		http.Error(w, "User ID not found in context", http.StatusUnauthorized)
+		return
+	}
+	reportRun.CreatedByUserId = userID
 	reportRun.Status = nhd_report.ReportRun_PENDING
 	reportRun.CreatedAt = timestamppb.Now()
 

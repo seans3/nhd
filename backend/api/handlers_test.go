@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"cloud.google.com/go/firestore"
+	"github.com/seans3/nhd/backend/middleware"
 	"github.com/seans3/nhd/backend/mocks"
 	"github.com/seans3/nhd/backend/proto/gen/go"
 	"github.com/stretchr/testify/assert"
@@ -22,11 +24,11 @@ func TestAPI_CreateCustomer(t *testing.T) {
 	req, err := http.NewRequest("POST", "/customers", strings.NewReader(customerJSON))
 	assert.NoError(t, err)
 
-	// We need to return a mock DocumentRef, which is tricky. For a unit test,
-	// returning a simple struct with the ID is sufficient.
+	// Add the user ID to the request context to simulate an authenticated user
+	ctx := context.WithValue(req.Context(), middleware.UserIDKey, "test-user-id")
+	req = req.WithContext(ctx)
+
 	mockDocRef := &firestore.DocumentRef{ID: "test-id"}
-	
-	// We don't care about the WriteResult in this test, so we can return nil.
 	mockDS.On("CreateCustomer", mock.Anything, mock.AnythingOfType("*nhd_report.Customer")).Return(mockDocRef, (*firestore.WriteResult)(nil), nil)
 
 	rr := httptest.NewRecorder()

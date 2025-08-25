@@ -72,29 +72,35 @@ func main() {
 	metricsHandler := metrics.NewMetricsHandler()
 	readyzHandler := &health.ReadyzHandler{DS: dsClient}
 
-	mux := http.NewServeMux()
+	// --- Create protected sub-routers ---
+	apiMux := http.NewServeMux()
+	// User
+	apiMux.HandleFunc("POST /customers", apiHandler.CreateCustomer)
+	apiMux.HandleFunc("GET /customers", apiHandler.GetCustomers)
+	// Report Runs
+	apiMux.HandleFunc("POST /report-runs", apiHandler.CreateReportRun)
+	apiMux.HandleFunc("GET /report-runs", apiHandler.GetReportRuns)
+	apiMux.HandleFunc("POST /report-runs/{id}/resend-email", apiHandler.ResendReportEmail)
+	// Financials
+	apiMux.HandleFunc("GET /financials/summary", apiHandler.GetFinancialsSummary)
 
-	// Health and Metrics Probes
+	adminMux := http.NewServeMux()
+	// User Management
+	adminMux.HandleFunc("POST /users/register", apiHandler.RegisterUser)
+	// Financial Management
+	adminMux.HandleFunc("PUT /report-runs/{id}/cost", apiHandler.UpdateReportCost)
+	adminMux.HandleFunc("POST /report-runs/{id}/payment", apiHandler.RecordReportPayment)
+
+	// --- Register all routes ---
+	mux := http.NewServeMux()
+	// Health and Metrics Probes (public)
 	mux.HandleFunc("GET /healthz", health.HealthzHandler)
 	mux.Handle("GET /readyz", readyzHandler)
 	mux.HandleFunc("GET /metrics", metricsHandler.Handler)
-
-	// User
-	mux.Handle("POST /users/register", authClient.RequireAdmin(http.HandlerFunc(apiHandler.RegisterUser)))
-
-	// Customers
-	mux.HandleFunc("POST /customers", apiHandler.CreateCustomer)
-	mux.HandleFunc("GET /customers", apiHandler.GetCustomers)
-
-	// Report Runs
-	mux.HandleFunc("POST /report-runs", apiHandler.CreateReportRun)
-	mux.HandleFunc("GET /report-runs", apiHandler.GetReportRuns)
-	mux.HandleFunc("POST /report-runs/{id}/resend-email", apiHandler.ResendReportEmail)
-	mux.HandleFunc("PUT /report-runs/{id}/cost", apiHandler.UpdateReportCost)
-	mux.HandleFunc("POST /report-runs/{id}/payment", apiHandler.RecordReportPayment)
-
-	// Financials
-	mux.HandleFunc("GET /financials/summary", apiHandler.GetFinancialsSummary)
+	// Standard authenticated API routes
+	mux.Handle("/api/", http.StripPrefix("/api", authClient.VerifyAuthToken(apiMux)))
+	// Admin-only API routes
+	mux.Handle("/admin/", http.StripPrefix("/admin", authClient.RequireAdmin(adminMux)))
 
 	// Create the rate limiting middleware with the configured values.
 	rateLimitMiddleware := middleware.RateLimit(*rps, *burst)
