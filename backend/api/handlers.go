@@ -77,7 +77,17 @@ func (a *API) CreateReportRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) GetReportRuns(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	paymentStatus := r.URL.Query().Get("payment_status")
+	
+	reportRuns, err := a.DS.GetReportRuns(r.Context(), paymentStatus)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(reportRuns)
 }
 
 func (a *API) ResendReportEmail(w http.ResponseWriter, r *http.Request) {
@@ -85,11 +95,39 @@ func (a *API) ResendReportEmail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) UpdateReportCost(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	reportRunID := r.PathValue("id") // Requires Go 1.22+ and http.ServeMux
+
+	var newCost nhd_report.ReportRun_ReportCost
+	if err := json.NewDecoder(r.Body).Decode(&newCost); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	newCost.SetAt = timestamppb.Now()
+
+	if err := a.DS.UpdateReportCost(r.Context(), reportRunID, &newCost); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (a *API) RecordReportPayment(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	reportRunID := r.PathValue("id")
+
+	var payment nhd_report.ReportRun_Payment
+	if err := json.NewDecoder(r.Body).Decode(&payment); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	payment.PaidAt = timestamppb.Now()
+
+	if err := a.DS.RecordReportPayment(r.Context(), reportRunID, &payment); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 // Financials

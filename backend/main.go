@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/seans3/nhd/backend/api"
-	"github.comcom/seans3/nhd/backend/datastore"
+	"github.com/seans3/nhd/backend/datastore"
 	"github.com/seans3/nhd/backend/publisher"
 )
 
@@ -35,41 +35,27 @@ func main() {
 		PS: psClient,
 	}
 
+	mux := http.NewServeMux()
+
 	// User
-	http.HandleFunc("/users/register", apiHandler.RegisterUser)
+	mux.HandleFunc("POST /users/register", apiHandler.RegisterUser)
 
 	// Customers
-	http.HandleFunc("/customers", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodPost:
-			apiHandler.CreateCustomer(w, r)
-		case http.MethodGet:
-			apiHandler.GetCustomers(w, r)
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
+	mux.HandleFunc("POST /customers", apiHandler.CreateCustomer)
+	mux.HandleFunc("GET /customers", apiHandler.GetCustomers)
 
 	// Report Runs
-	http.HandleFunc("/report-runs", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodPost:
-			apiHandler.CreateReportRun(w, r)
-		case http.MethodGet:
-			apiHandler.GetReportRuns(w, r)
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-	http.HandleFunc("/report-runs/{id}/resend-email", apiHandler.ResendReportEmail)
-	http.HandleFunc("/report-runs/{id}/cost", apiHandler.UpdateReportCost)
-	http.HandleFunc("/report-runs/{id}/payment", apiHandler.RecordReportPayment)
+	mux.HandleFunc("POST /report-runs", apiHandler.CreateReportRun)
+	mux.HandleFunc("GET /report-runs", apiHandler.GetReportRuns)
+	mux.HandleFunc("POST /report-runs/{id}/resend-email", apiHandler.ResendReportEmail)
+	mux.HandleFunc("PUT /report-runs/{id}/cost", apiHandler.UpdateReportCost)
+	mux.HandleFunc("POST /report-runs/{id}/payment", apiHandler.RecordReportPayment)
 
 	// Financials
-	http.HandleFunc("/financials/summary", apiHandler.GetFinancialsSummary)
+	mux.HandleFunc("GET /financials/summary", apiHandler.GetFinancialsSummary)
 
 	log.Println("Starting server on :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	if err := http.ListenAndServe(":8080", mux); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -64,6 +64,55 @@ func (c *Client) CreateReportRun(ctx context.Context, reportRun *nhd_report.Repo
 	return c.Collection("report_runs").Add(ctx, reportRun)
 }
 
+func (c *Client) GetReportRuns(ctx context.Context, paymentStatusFilter string) ([]*nhd_report.ReportRun, error) {
+	var reportRuns []*nhd_report.ReportRun
+	
+	query := c.Collection("report_runs").Query
+	
+	// Apply filter if one is provided
+	if paymentStatusFilter != "" {
+		// Note: This requires a composite index in Firestore on `payment_details.status`
+		query = query.Where("payment_details.status", "==", paymentStatusFilter)
+	}
+
+	iter := query.Documents(ctx)
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		var reportRun nhd_report.ReportRun
+		if err := doc.DataTo(&reportRun); err != nil {
+			log.Printf("Failed to unmarshal report run: %v", err)
+			continue
+		}
+		reportRuns = append(reportRuns, &reportRun)
+	}
+	return reportRuns, nil
+}
+
+func (c *Client) UpdateReportCost(ctx context.Context, reportRunID string, newCost *nhd_report.ReportRun_ReportCost) error {
+	reportRunRef := c.Collection("report_runs").Doc(reportRunID)
+
+	return c.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		return tx.Update(reportRunRef, []firestore.Update{
+			{Path: "cost_history", Value: firestore.ArrayUnion(newCost)},
+		})
+	})
+}
+
+func (c *Client) RecordReportPayment(ctx context.Context, reportRunID string, payment *nhd_report.ReportRun_Payment) error {
+	reportRunRef := c.Collection("report_runs").Doc(reportRunID)
+	return c.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+		return tx.Update(reportRunRef, []firestore.Update{
+			{Path: "payment_details", Value: payment},
+		})
+	})
+}
+
 func (c *Client) GetPaidReportsSummary(ctx context.Context) (*FinancialsSummary, error) {
 	summary := &FinancialsSummary{}
 	var totalRevenue float64
