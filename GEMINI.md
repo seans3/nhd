@@ -48,10 +48,11 @@ gcloud functions deploy handle_report_request \
 
 ### Frontend
 
-*TODO: Add commands for building and running the frontend*
+To run the frontend development server:
 ```bash
-# npm install
-# npm start
+cd frontend
+npm install
+npm start
 ```
 
 ## Development Conventions
