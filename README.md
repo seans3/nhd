@@ -158,6 +158,61 @@ message ReportRun {
 }
 ```
 
+## **Development**
+
+This project is managed using a `Makefile` to streamline common tasks.
+
+### **Prerequisites**
+
+*   Go (1.22+)
+*   Node.js and npm
+*   Python (3.12+)
+*   Google Cloud SDK
+*   `protoc` compiler
+
+### **Initial Setup**
+
+1.  **Install Dependencies:**
+    ```bash
+    make all
+    ```
+    This will install all necessary Go, npm, and Python dependencies.
+
+2.  **Generate Protobuf Code:**
+    If you modify the `.proto` file, you must regenerate the Go and Python code:
+    ```bash
+    make proto
+    ```
+
+### **Running the Services**
+
+*   **Backend Server:**
+    To run the Go backend, you must have the `GOOGLE_CLOUD_PROJECT` environment variable set.
+    ```bash
+    export GOOGLE_CLOUD_PROJECT=<your-gcp-project-id>
+    make backend-run
+    ```
+    The server will start on port `8080`.
+
+*   **Frontend Development Server:**
+    ```bash
+    make frontend-start
+    ```
+    The frontend will be available on port `3000`.
+
+### **Testing**
+
+*   **Run All Backend Tests:**
+    This includes unit and integration tests for the Go API.
+    ```bash
+    make test
+    ```
+
+*   **Run Frontend Tests:**
+    ```bash
+    make frontend-test
+    ```
+
 ## **API Endpoints**
 
 The Go Backend API will expose the following RESTful endpoints:
