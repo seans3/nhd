@@ -4,16 +4,17 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/seans3/nhd/backend/datastore"
+	"github.com/seans3/nhd/backend/interfaces"
 	"github.com/seans3/nhd/backend/publisher"
-	"github.com/seans3/nhd/proto/gen/go;nhd_report"
+	"github.com/seans3/nhd/backend/proto/gen/go"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type API struct {
-	DS *datastore.Client
+	DS interfaces.Datastore
 	PS *publisher.Client
 }
+
 
 // Users
 func (a *API) RegisterUser(w http.ResponseWriter, r *http.Request) {

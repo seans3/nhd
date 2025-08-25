@@ -5,26 +5,16 @@ import (
 	"log"
 
 	"cloud.google.com/go/firestore"
-	"github.com/seans3/nhd/proto/gen/go;nhd_report"
+	"github.com/seans3/nhd/backend/interfaces"
+	"github.com/seans3/nhd/backend/proto/gen/go"
 	"google.golang.org/api/iterator"
 )
 
+// Statically assert that our client satisfies the interface.
+var _ interfaces.Datastore = (*Client)(nil)
+
 type Client struct {
 	*firestore.Client
-}
-
-// FinancialsSummary holds the aggregated financial data.
-type FinancialsSummary struct {
-	TotalRevenue float64        `json:"total_revenue"`
-	PaidReports  []PaidReportInfo `json:"paid_reports"`
-}
-
-// PaidReportInfo holds data for a single paid report.
-type PaidReportInfo struct {
-	CustomerName      string  `json:"customer_name"`
-	PropertyAddress   string  `json:"property_address"`
-	AmountPaid        float64 `json:"amount_paid"`
-	PaidAt            string  `json:"paid_at"`
 }
 
 func NewClient(ctx context.Context, projectID string) (*Client, error) {
@@ -113,8 +103,8 @@ func (c *Client) RecordReportPayment(ctx context.Context, reportRunID string, pa
 	})
 }
 
-func (c *Client) GetPaidReportsSummary(ctx context.Context) (*FinancialsSummary, error) {
-	summary := &FinancialsSummary{}
+func (c *Client) GetPaidReportsSummary(ctx context.Context) (*interfaces.FinancialsSummary, error) {
+	summary := &interfaces.FinancialsSummary{}
 	var totalRevenue float64
 
 	// Query for paid reports
@@ -141,7 +131,7 @@ func (c *Client) GetPaidReportsSummary(ctx context.Context) (*FinancialsSummary,
 			// For simplicity, we are not fetching customer and address details in this example.
 			// In a real application, you would fetch the customer and property address documents
 			// using the IDs from the reportRun to get the full name and address string.
-			paidReport := PaidReportInfo{
+			paidReport := interfaces.PaidReportInfo{
 				CustomerName:      "Customer " + reportRun.CustomerId, // Placeholder
 				PropertyAddress:   "Address for " + reportRun.PropertyAddressId, // Placeholder
 				AmountPaid:        reportRun.PaymentDetails.AmountPaid,
