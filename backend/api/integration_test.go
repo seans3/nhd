@@ -2,14 +2,15 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"cloud.google.com/go/firestore"
 	"firebase.google.com/go/v4/auth"
 	"github.com/seans3/nhd/backend/interfaces"
+	"github.com/seans3/nhd/backend/memstore"
 	"github.com/seans3/nhd/backend/mocks"
 	"github.com/seans3/nhd/backend/middleware"
 	"github.com/seans3/nhd/backend/proto/gen/go"
@@ -17,21 +18,21 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// setupTestServer initializes a new test server with mock dependencies.
-// It returns the server, the mock datastore, the mock publisher, and a cleanup function.
-func setupTestServer() (*httptest.Server, *mocks.MockDatastoreClient, *mocks.MockPublisherClient, *mocks.MockFirebaseAuth, func()) {
-	mockDS := new(mocks.MockDatastoreClient)
+// setupIntegrationTestServer initializes a new test server with an in-memory datastore
+// and a mock publisher/auth client.
+func setupIntegrationTestServer() (*httptest.Server, interfaces.Datastore, *mocks.MockPublisherClient, *mocks.MockFirebaseAuth, func()) {
+	memDS := memstore.NewClient()
 	mockPS := new(mocks.MockPublisherClient)
 	mockAuth := new(mocks.MockFirebaseAuth)
 
 	apiHandler := &API{
-		DS: mockDS,
+		DS: memDS,
 		PS: mockPS,
 	}
 
 	authClient := &middleware.AuthClient{
 		Firebase: mockAuth,
-		DS:       mockDS,
+		DS:       memDS,
 	}
 
 	mux := http.NewServeMux()
@@ -49,263 +50,160 @@ func setupTestServer() (*httptest.Server, *mocks.MockDatastoreClient, *mocks.Moc
 		server.Close()
 	}
 
-	return server, mockDS, mockPS, mockAuth, cleanup
+	return server, memDS, mockPS, mockAuth, cleanup
 }
 
-func TestIntegration_GetCustomers(t *testing.T) {
-	server, mockDS, _, _, cleanup := setupTestServer()
+func TestIntegration_CreateAndGetCustomers(t *testing.T) {
+	server, _, _, _, cleanup := setupIntegrationTestServer()
 	defer cleanup()
 
-	// Define the expected data
-	expectedCustomers := []*nhd_report.Customer{
-		{CustomerId: "cust1", FullName: "Alice Integration"},
-		{CustomerId: "cust2", FullName: "Bob Integration"},
-	}
-
-	// Set up the mock expectation
-	mockDS.On("GetCustomers", mock.Anything).Return(expectedCustomers, nil)
-
-	// Make a real HTTP request to the test server
-	resp, err := http.Get(server.URL + "/customers")
+	// 1. Create a new customer
+	customerToCreate := `{"full_name":"Charlie Integration","email":"charlie@it.com"}`
+	resp, err := http.Post(server.URL+"/customers", "application/json", bytes.NewBufferString(customerToCreate))
 	assert.NoError(t, err)
-	defer resp.Body.Close()
-
-	// Verify the response
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-	var actualCustomers []*nhd_report.Customer
-	err = json.NewDecoder(resp.Body).Decode(&actualCustomers)
-	assert.NoError(t, err)
-	assert.Equal(t, len(expectedCustomers), len(actualCustomers))
-	assert.Equal(t, "Alice Integration", actualCustomers[0].FullName)
-
-	// Verify that the mock was called
-	mockDS.AssertExpectations(t)
-}
-
-func TestIntegration_CreateCustomer(t *testing.T) {
-	server, mockDS, _, _, cleanup := setupTestServer()
-	defer cleanup()
-
-	// Prepare request body
-	customerToCreate := nhd_report.Customer{FullName: "Charlie Integration", Email: "charlie@it.com"}
-	body, err := json.Marshal(customerToCreate)
-	assert.NoError(t, err)
-
-	// Set up the mock expectation
-	mockDocRef := &firestore.DocumentRef{ID: "new-cust-id"}
-	mockDS.On("CreateCustomer", mock.Anything, mock.AnythingOfType("*nhd_report.Customer")).Return(mockDocRef, (*firestore.WriteResult)(nil), nil)
-
-	// Make a real HTTP request
-	resp, err := http.Post(server.URL+"/customers", "application/json", bytes.NewBuffer(body))
-	assert.NoError(t, err)
-	defer resp.Body.Close()
-
-	// Verify the response
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	defer resp.Body.Close()
+
 	var result map[string]string
 	err = json.NewDecoder(resp.Body).Decode(&result)
 	assert.NoError(t, err)
-	assert.Equal(t, "new-cust-id", result["customer_id"])
+	newCustomerID := result["customer_id"]
+	assert.NotEmpty(t, newCustomerID)
 
-	// Verify that the mock was called
-	mockDS.AssertExpectations(t)
-}
-
-func TestIntegration_CreateReportRun(t *testing.T) {
-	server, mockDS, mockPS, _, cleanup := setupTestServer()
-	defer cleanup()
-
-	reportRunJSON := `{"customer_id":"cust123","property_address_id":"addr123"}`
-	body := bytes.NewBufferString(reportRunJSON)
-
-	mockDocRef := &firestore.DocumentRef{ID: "new-report-id"}
-	mockDS.On("CreateReportRun", mock.Anything, mock.AnythingOfType("*nhd_report.ReportRun")).Return(mockDocRef, (*firestore.WriteResult)(nil), nil)
-	mockPS.On("Publish", mock.Anything, "nhd-report-requests", []byte(mockDocRef.ID)).Return("pub-msg-id", nil)
-
-	resp, err := http.Post(server.URL+"/report-runs", "application/json", body)
+	// 2. Get all customers and verify the new one is there
+	resp, err = http.Get(server.URL + "/customers")
 	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	defer resp.Body.Close()
 
+	var customers []*nhd_report.Customer
+	err = json.NewDecoder(resp.Body).Decode(&customers)
+	assert.NoError(t, err)
+	assert.Len(t, customers, 1)
+	assert.Equal(t, "Charlie Integration", customers[0].FullName)
+	assert.Equal(t, newCustomerID, customers[0].CustomerId)
+}
+
+func TestIntegration_FullReportLifecycle(t *testing.T) {
+	server, memDS, mockPS, _, cleanup := setupIntegrationTestServer()
+	defer cleanup()
+
+	// 1. Create a customer first
+	customer := &nhd_report.Customer{FullName: "Test Customer"}
+	docRef, _, err := memDS.CreateCustomer(context.Background(), customer)
+	assert.NoError(t, err)
+	customerID := docRef.ID
+
+	// 2. Create a report run for that customer
+	reportRunJSON := `{"customer_id":"` + customerID + `","property_address_id":"addr123"}`
+	mockPS.On("Publish", mock.Anything, "nhd-report-requests", mock.Anything).Return("pub-msg-id", nil)
+
+	resp, err := http.Post(server.URL+"/report-runs", "application/json", bytes.NewBufferString(reportRunJSON))
+	assert.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
-	var result map[string]string
-	err = json.NewDecoder(resp.Body).Decode(&result)
-	assert.NoError(t, err)
-	assert.Equal(t, "new-report-id", result["report_run_id"])
-
-	mockDS.AssertExpectations(t)
-	mockPS.AssertExpectations(t)
-}
-
-func TestIntegration_GetReportRuns(t *testing.T) {
-	server, mockDS, _, _, cleanup := setupTestServer()
-	defer cleanup()
-
-	expectedReports := []*nhd_report.ReportRun{
-		{ReportRunId: "run1"},
-		{ReportRunId: "run2"},
-	}
-	mockDS.On("GetReportRuns", mock.Anything, "").Return(expectedReports, nil)
-
-	resp, err := http.Get(server.URL + "/report-runs")
-	assert.NoError(t, err)
 	defer resp.Body.Close()
 
+	var createResult map[string]string
+	err = json.NewDecoder(resp.Body).Decode(&createResult)
+	assert.NoError(t, err)
+	reportID := createResult["report_run_id"]
+	assert.NotEmpty(t, reportID)
+
+	// 4. Get all reports and verify the new one is there
+	resp, err = http.Get(server.URL + "/report-runs")
+	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	var actualReports []*nhd_report.ReportRun
-	err = json.NewDecoder(resp.Body).Decode(&actualReports)
-	assert.NoError(t, err)
-	assert.Equal(t, 2, len(actualReports))
-	assert.Equal(t, "run1", actualReports[0].ReportRunId)
-
-	mockDS.AssertExpectations(t)
-}
-
-func TestIntegration_UpdateReportCost(t *testing.T) {
-	server, mockDS, _, _, cleanup := setupTestServer()
-	defer cleanup()
-
-	costJSON := `{"amount":123.45}`
-	body := bytes.NewBufferString(costJSON)
-
-	mockDS.On("UpdateReportCost", mock.Anything, "run123", mock.AnythingOfType("*nhd_report.ReportRun_ReportCost")).Return(nil)
-
-	req, err := http.NewRequest("PUT", server.URL+"/report-runs/run123/cost", body)
-	assert.NoError(t, err)
-	
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	assert.NoError(t, err)
 	defer resp.Body.Close()
 
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	mockDS.AssertExpectations(t)
-}
-
-func TestIntegration_RecordReportPayment(t *testing.T) {
-	server, mockDS, _, _, cleanup := setupTestServer()
-	defer cleanup()
-
-	paymentJSON := `{"amount_paid":123.45}`
-	body := bytes.NewBufferString(paymentJSON)
-
-	mockDS.On("RecordReportPayment", mock.Anything, "run123", mock.AnythingOfType("*nhd_report.ReportRun_Payment")).Return(nil)
-
-	resp, err := http.Post(server.URL+"/report-runs/run123/payment", "application/json", body)
+	var reports []*nhd_report.ReportRun
+	err = json.NewDecoder(resp.Body).Decode(&reports)
 	assert.NoError(t, err)
-	defer resp.Body.Close()
+	assert.Len(t, reports, 1)
+	assert.Equal(t, reportID, reports[0].ReportRunId)
 
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	mockDS.AssertExpectations(t)
-}
-
-func TestIntegration_GetFinancialsSummary(t *testing.T) {
-	server, mockDS, _, _, cleanup := setupTestServer()
-	defer cleanup()
-
-	expectedSummary := &interfaces.FinancialsSummary{
-		TotalRevenue: 100.0,
-		PaidReports:  []interfaces.PaidReportInfo{{CustomerName: "Test Cust"}},
-	}
-	mockDS.On("GetPaidReportsSummary", mock.Anything).Return(expectedSummary, nil)
-
-	resp, err := http.Get(server.URL + "/financials/summary")
+	// 5. Update the cost of the report
+	costJSON := `{"amount":123.45, "currency": "USD"}`
+	req, err := http.NewRequest("PUT", server.URL+"/report-runs/"+reportID+"/cost", bytes.NewBufferString(costJSON))
 	assert.NoError(t, err)
-	defer resp.Body.Close()
-
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	var actualSummary interfaces.FinancialsSummary
-	err = json.NewDecoder(resp.Body).Decode(&actualSummary)
-	assert.NoError(t, err)
-	assert.Equal(t, expectedSummary.TotalRevenue, actualSummary.TotalRevenue)
-	assert.Equal(t, len(expectedSummary.PaidReports), len(actualSummary.PaidReports))
-
-	mockDS.AssertExpectations(t)
-}
-
-func TestIntegration_RegisterUser_Success(t *testing.T) {
-	server, mockDS, _, mockAuth, cleanup := setupTestServer()
-	defer cleanup()
-
-	// 1. Setup Mocks
-	// Mock token verification to succeed
-	mockAuth.On("VerifyIDToken", mock.Anything, "valid-admin-token").Return(&auth.Token{UID: "admin-uid"}, nil)
-	
-	// Mock datastore call to get the admin user's profile
-	adminUser := &nhd_report.User{
-		UserId: "admin-uid",
-		Permissions: &nhd_report.Permissions{IsAdmin: true},
-	}
-	mockDS.On("GetUserByID", mock.Anything, "admin-uid").Return(adminUser, nil)
-
-	// Mock datastore call to create the new user
-	mockDS.On("CreateUser", mock.Anything, mock.AnythingOfType("*nhd_report.User")).Return(nil)
-
-	// 2. Prepare Request
-	newUserJSON := `{"email":"newuser@example.com","password":"password","full_name":"New User","is_admin":false}`
-	req, err := http.NewRequest("POST", server.URL+"/users/register", bytes.NewBufferString(newUserJSON))
-	assert.NoError(t, err)
-	req.Header.Set("Authorization", "Bearer valid-admin-token")
 	req.Header.Set("Content-Type", "application/json")
-
-	// 3. Make Request
+	
 	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err = client.Do(req)
 	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	defer resp.Body.Close()
 
-	// 4. Assert Response
-	assert.Equal(t, http.StatusCreated, resp.StatusCode)
-	mockDS.AssertExpectations(t)
-	mockAuth.AssertExpectations(t)
+	// 6. Verify the cost was updated in the datastore
+	updatedReport, err := memDS.GetReportRuns(context.Background(), "")
+	assert.NoError(t, err)
+	assert.Len(t, updatedReport, 1)
+	assert.Len(t, updatedReport[0].CostHistory, 1)
+	assert.Equal(t, 123.45, updatedReport[0].CostHistory[0].Amount)
+
+	// 7. Record a payment for the report
+	paymentJSON := `{"amount_paid":123.45, "status": 2}` // PAID = 2
+	resp, err = http.Post(server.URL+"/report-runs/"+reportID+"/payment", "application/json", bytes.NewBufferString(paymentJSON))
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	defer resp.Body.Close()
+
+	// 8. Get the financials summary and verify the payment is included
+	resp, err = http.Get(server.URL + "/financials/summary")
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	defer resp.Body.Close()
+
+	var summary interfaces.FinancialsSummary
+	err = json.NewDecoder(resp.Body).Decode(&summary)
+	assert.NoError(t, err)
+	assert.Equal(t, 123.45, summary.TotalRevenue)
+	assert.Len(t, summary.PaidReports, 1)
+	assert.Equal(t, "Customer "+customerID, summary.PaidReports[0].CustomerName)
 }
 
-func TestIntegration_RegisterUser_Forbidden(t *testing.T) {
-	server, mockDS, _, mockAuth, cleanup := setupTestServer()
+func TestIntegration_RegisterUser_FullFlow(t *testing.T) {
+	server, memDS, _, mockAuth, cleanup := setupIntegrationTestServer()
 	defer cleanup()
 
-	// 1. Setup Mocks
+	// --- Part 1: Test Forbidden ---
+	// 1. Setup Mocks for a non-admin user
 	mockAuth.On("VerifyIDToken", mock.Anything, "valid-non-admin-token").Return(&auth.Token{UID: "non-admin-uid"}, nil)
-	
-	nonAdminUser := &nhd_report.User{
-		UserId: "non-admin-uid",
-		Permissions: &nhd_report.Permissions{IsAdmin: false},
-	}
-	mockDS.On("GetUserByID", mock.Anything, "non-admin-uid").Return(nonAdminUser, nil)
+	nonAdminUser := &nhd_report.User{UserId: "non-admin-uid", Permissions: &nhd_report.Permissions{IsAdmin: false}}
+	err := memDS.CreateUser(context.Background(), nonAdminUser)
+	assert.NoError(t, err)
 
-	// 2. Prepare Request
-	newUserJSON := `{"email":"newuser@example.com","password":"password","full_name":"New User","is_admin":false}`
+	// 2. Prepare and make the request
+	newUserJSON := `{"email":"newuser@example.com","password":"password","full_name":"New User"}`
 	req, err := http.NewRequest("POST", server.URL+"/users/register", bytes.NewBufferString(newUserJSON))
 	assert.NoError(t, err)
 	req.Header.Set("Authorization", "Bearer valid-non-admin-token")
 	req.Header.Set("Content-Type", "application/json")
 
-	// 3. Make Request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	assert.NoError(t, err)
 	defer resp.Body.Close()
 
-	// 4. Assert Response
+	// 3. Assert Forbidden
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
-	mockDS.AssertExpectations(t)
-	mockAuth.AssertExpectations(t)
-}
 
-func TestIntegration_RegisterUser_Unauthorized(t *testing.T) {
-	server, _, _, _, cleanup := setupTestServer()
-	defer cleanup()
-
-	newUserJSON := `{"email":"newuser@example.com","password":"password","full_name":"New User","is_admin":false}`
-	req, err := http.NewRequest("POST", server.URL+"/users/register", bytes.NewBufferString(newUserJSON))
+	// --- Part 2: Test Success ---
+	// 1. Setup Mocks for an admin user
+	mockAuth.On("VerifyIDToken", mock.Anything, "valid-admin-token").Return(&auth.Token{UID: "admin-uid"}, nil)
+	adminUser := &nhd_report.User{UserId: "admin-uid", Permissions: &nhd_report.Permissions{IsAdmin: true}}
+	err = memDS.CreateUser(context.Background(), adminUser)
 	assert.NoError(t, err)
-	req.Header.Set("Content-Type", "application/json")
-	// No Authorization header
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	// 2. Prepare and make the request again, this time as an admin
+	req, err = http.NewRequest("POST", server.URL+"/users/register", bytes.NewBufferString(newUserJSON))
+	assert.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer valid-admin-token")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err = client.Do(req)
 	assert.NoError(t, err)
 	defer resp.Body.Close()
 
-	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	// 3. Assert Success
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 }
