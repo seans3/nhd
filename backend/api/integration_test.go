@@ -8,8 +8,10 @@ import (
 	"testing"
 
 	"cloud.google.com/go/firestore"
+	"firebase.google.com/go/v4/auth"
 	"github.com/seans3/nhd/backend/interfaces"
 	"github.com/seans3/nhd/backend/mocks"
+	"github.com/seans3/nhd/backend/middleware"
 	"github.com/seans3/nhd/backend/proto/gen/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -17,13 +19,19 @@ import (
 
 // setupTestServer initializes a new test server with mock dependencies.
 // It returns the server, the mock datastore, the mock publisher, and a cleanup function.
-func setupTestServer() (*httptest.Server, *mocks.MockDatastoreClient, *mocks.MockPublisherClient, func()) {
+func setupTestServer() (*httptest.Server, *mocks.MockDatastoreClient, *mocks.MockPublisherClient, *mocks.MockFirebaseAuth, func()) {
 	mockDS := new(mocks.MockDatastoreClient)
 	mockPS := new(mocks.MockPublisherClient)
+	mockAuth := new(mocks.MockFirebaseAuth)
 
 	apiHandler := &API{
 		DS: mockDS,
 		PS: mockPS,
+	}
+
+	authClient := &middleware.AuthClient{
+		Firebase: mockAuth,
+		DS:       mockDS,
 	}
 
 	mux := http.NewServeMux()
@@ -34,17 +42,18 @@ func setupTestServer() (*httptest.Server, *mocks.MockDatastoreClient, *mocks.Moc
 	mux.HandleFunc("PUT /report-runs/{id}/cost", apiHandler.UpdateReportCost)
 	mux.HandleFunc("POST /report-runs/{id}/payment", apiHandler.RecordReportPayment)
 	mux.HandleFunc("GET /financials/summary", apiHandler.GetFinancialsSummary)
+	mux.Handle("POST /users/register", authClient.RequireAdmin(http.HandlerFunc(apiHandler.RegisterUser)))
 
 	server := httptest.NewServer(mux)
 	cleanup := func() {
 		server.Close()
 	}
 
-	return server, mockDS, mockPS, cleanup
+	return server, mockDS, mockPS, mockAuth, cleanup
 }
 
 func TestIntegration_GetCustomers(t *testing.T) {
-	server, mockDS, _, cleanup := setupTestServer()
+	server, mockDS, _, _, cleanup := setupTestServer()
 	defer cleanup()
 
 	// Define the expected data
@@ -75,7 +84,7 @@ func TestIntegration_GetCustomers(t *testing.T) {
 }
 
 func TestIntegration_CreateCustomer(t *testing.T) {
-	server, mockDS, _, cleanup := setupTestServer()
+	server, mockDS, _, _, cleanup := setupTestServer()
 	defer cleanup()
 
 	// Prepare request body
@@ -104,7 +113,7 @@ func TestIntegration_CreateCustomer(t *testing.T) {
 }
 
 func TestIntegration_CreateReportRun(t *testing.T) {
-	server, mockDS, mockPS, cleanup := setupTestServer()
+	server, mockDS, mockPS, _, cleanup := setupTestServer()
 	defer cleanup()
 
 	reportRunJSON := `{"customer_id":"cust123","property_address_id":"addr123"}`
@@ -129,7 +138,7 @@ func TestIntegration_CreateReportRun(t *testing.T) {
 }
 
 func TestIntegration_GetReportRuns(t *testing.T) {
-	server, mockDS, _, cleanup := setupTestServer()
+	server, mockDS, _, _, cleanup := setupTestServer()
 	defer cleanup()
 
 	expectedReports := []*nhd_report.ReportRun{
@@ -153,7 +162,7 @@ func TestIntegration_GetReportRuns(t *testing.T) {
 }
 
 func TestIntegration_UpdateReportCost(t *testing.T) {
-	server, mockDS, _, cleanup := setupTestServer()
+	server, mockDS, _, _, cleanup := setupTestServer()
 	defer cleanup()
 
 	costJSON := `{"amount":123.45}`
@@ -174,7 +183,7 @@ func TestIntegration_UpdateReportCost(t *testing.T) {
 }
 
 func TestIntegration_RecordReportPayment(t *testing.T) {
-	server, mockDS, _, cleanup := setupTestServer()
+	server, mockDS, _, _, cleanup := setupTestServer()
 	defer cleanup()
 
 	paymentJSON := `{"amount_paid":123.45}`
@@ -191,7 +200,7 @@ func TestIntegration_RecordReportPayment(t *testing.T) {
 }
 
 func TestIntegration_GetFinancialsSummary(t *testing.T) {
-	server, mockDS, _, cleanup := setupTestServer()
+	server, mockDS, _, _, cleanup := setupTestServer()
 	defer cleanup()
 
 	expectedSummary := &interfaces.FinancialsSummary{
@@ -212,4 +221,91 @@ func TestIntegration_GetFinancialsSummary(t *testing.T) {
 	assert.Equal(t, len(expectedSummary.PaidReports), len(actualSummary.PaidReports))
 
 	mockDS.AssertExpectations(t)
+}
+
+func TestIntegration_RegisterUser_Success(t *testing.T) {
+	server, mockDS, _, mockAuth, cleanup := setupTestServer()
+	defer cleanup()
+
+	// 1. Setup Mocks
+	// Mock token verification to succeed
+	mockAuth.On("VerifyIDToken", mock.Anything, "valid-admin-token").Return(&auth.Token{UID: "admin-uid"}, nil)
+	
+	// Mock datastore call to get the admin user's profile
+	adminUser := &nhd_report.User{
+		UserId: "admin-uid",
+		Permissions: &nhd_report.Permissions{IsAdmin: true},
+	}
+	mockDS.On("GetUserByID", mock.Anything, "admin-uid").Return(adminUser, nil)
+
+	// Mock datastore call to create the new user
+	mockDS.On("CreateUser", mock.Anything, mock.AnythingOfType("*nhd_report.User")).Return(nil)
+
+	// 2. Prepare Request
+	newUserJSON := `{"email":"newuser@example.com","password":"password","full_name":"New User","is_admin":false}`
+	req, err := http.NewRequest("POST", server.URL+"/users/register", bytes.NewBufferString(newUserJSON))
+	assert.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer valid-admin-token")
+	req.Header.Set("Content-Type", "application/json")
+
+	// 3. Make Request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	assert.NoError(t, err)
+	defer resp.Body.Close()
+
+	// 4. Assert Response
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	mockDS.AssertExpectations(t)
+	mockAuth.AssertExpectations(t)
+}
+
+func TestIntegration_RegisterUser_Forbidden(t *testing.T) {
+	server, mockDS, _, mockAuth, cleanup := setupTestServer()
+	defer cleanup()
+
+	// 1. Setup Mocks
+	mockAuth.On("VerifyIDToken", mock.Anything, "valid-non-admin-token").Return(&auth.Token{UID: "non-admin-uid"}, nil)
+	
+	nonAdminUser := &nhd_report.User{
+		UserId: "non-admin-uid",
+		Permissions: &nhd_report.Permissions{IsAdmin: false},
+	}
+	mockDS.On("GetUserByID", mock.Anything, "non-admin-uid").Return(nonAdminUser, nil)
+
+	// 2. Prepare Request
+	newUserJSON := `{"email":"newuser@example.com","password":"password","full_name":"New User","is_admin":false}`
+	req, err := http.NewRequest("POST", server.URL+"/users/register", bytes.NewBufferString(newUserJSON))
+	assert.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer valid-non-admin-token")
+	req.Header.Set("Content-Type", "application/json")
+
+	// 3. Make Request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	assert.NoError(t, err)
+	defer resp.Body.Close()
+
+	// 4. Assert Response
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	mockDS.AssertExpectations(t)
+	mockAuth.AssertExpectations(t)
+}
+
+func TestIntegration_RegisterUser_Unauthorized(t *testing.T) {
+	server, _, _, _, cleanup := setupTestServer()
+	defer cleanup()
+
+	newUserJSON := `{"email":"newuser@example.com","password":"password","full_name":"New User","is_admin":false}`
+	req, err := http.NewRequest("POST", server.URL+"/users/register", bytes.NewBufferString(newUserJSON))
+	assert.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	// No Authorization header
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	assert.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }

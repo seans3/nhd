@@ -51,3 +51,16 @@ func (m *MockDatastoreClient) GetPaidReportsSummary(ctx context.Context) (*inter
 	args := m.Called(ctx)
 	return args.Get(0).(*interfaces.FinancialsSummary), args.Error(1)
 }
+
+func (m *MockDatastoreClient) GetUserByID(ctx context.Context, uid string) (*nhd_report.User, error) {
+	args := m.Called(ctx, uid)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*nhd_report.User), args.Error(1)
+}
+
+func (m *MockDatastoreClient) CreateUser(ctx context.Context, user *nhd_report.User) error {
+	args := m.Called(ctx, user)
+	return args.Error(0)
+}
