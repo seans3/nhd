@@ -29,6 +29,14 @@ To maintain high engineering standards throughout the project's evolution, all d
 1.  **Mandatory Unit Testing**: Every new feature or bug fix must be accompanied by comprehensive unit tests. Tests should be written in isolation, using mocks for external dependencies (Firestore, Pub/Sub, etc.).
 2.  **Test Coverage Goal**: Aim for a minimum of **80% unit test coverage** across all service components (Go Backend and Python Reporter).
 3.  **Strict Linting Policy**: Never commit or merge code that does not pass the project's linting requirements (`go vet`, `pylint`, or equivalent). Verification must be performed manually or via the Makefile before every milestone completion.
+4.  **Schema-First Development**: All data model changes MUST start in `nhd.proto`. Code generation (`make proto`) must be the only way to update service interfaces to ensure type safety and consistency.
+5.  **Idempotent Operations**: All backend handlers and background workers (especially the Python reporter) must be designed for idempotency. Given the event-driven nature (Pub/Sub), the system must handle duplicate messages without side effects.
+6.  **Structured Observability**: Every log entry must be structured JSON. Critical operations (e.g., PDF generation, payment processing) must include a `report_run_id` and a correlated `trace_id` for cross-service debugging.
+7.  **Surgical Error Handling**: Avoid generic 500 errors. Implement granular error codes and wrap errors in Go to provide context without leaking sensitive system internals.
+8.  **Security by Design**:
+    - Never log PII (Personally Identifiable Information) or financial secrets.
+    - Use Signed URLs for all document access; never serve PDF content directly from public buckets.
+    - Principle of Least Privilege: Ensure the Cloud Run and Cloud Function service accounts have only the minimum necessary permissions.
 
 ---
 
