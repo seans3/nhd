@@ -71,6 +71,11 @@ backend-test: ## Run all unit tests for the Go backend
 # ====================================================================================
 
 frontend-install: ## Install frontend npm dependencies
+	@echo "--- Checking for npm..."
+	@if ! command -v npm >/dev/null 2>&1; then \
+		echo "ERROR: npm not found in PATH. Please install Node.js and npm to build the frontend."; \
+		exit 1; \
+	fi
 	@echo "--- Installing frontend dependencies..."
 	@cd frontend && npm install
 
@@ -97,9 +102,9 @@ frontend-test: frontend-install ## Run unit tests for the frontend
 reporter-install-deps: ## Create a venv and install Python dependencies for the reporter
 	@echo "--- Installing Python reporter dependencies..."
 	@if [ ! -d "$(VENV_DIR)" ]; then \
-		$(PYTHON) -m venv $(VENV_DIR); \
+		$(PYTHON) -m venv $(VENV_DIR) || (echo "ERROR: venv creation failed. Ensure python3-venv is installed." && exit 1); \
 	fi
-	@$(VENV_DIR)/bin/pip install -r reporter/requirements.txt
+	@$(VENV_DIR)/bin/pip install --index-url https://pypi.org/simple -r reporter/requirements.txt
 
 # ====================================================================================
 # CLEANUP

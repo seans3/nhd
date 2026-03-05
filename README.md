@@ -6,6 +6,8 @@ This document outlines the complete architecture, data models, and workflows for
 
 A **Natural Hazard Disclosure (NHD) report** is a legally mandated document required in nearly all California real estate transactions. Its primary purpose is to inform potential buyers about whether a property lies within specific, officially mapped natural hazard zones. This disclosure is a critical component of consumer protection, ensuring that a buyer is aware of significant risks that could affect the property's value, safety, and the cost of insurance before they complete the purchase. 🏡
 
+For details on the future development and milestones of this service, see [PLAN.md](PLAN.md).
+
 Under California law (the Natural Hazards Disclosure Act), sellers and their agents have a legal duty to disclose this information. Failure to do so can result in significant legal liability. By providing a standardized report from a third-party expert (like the service described in this document), sellers fulfill their legal obligations and buyers can make a more informed decision.
 
 ### **Legally Required Hazard Disclosures**
@@ -164,11 +166,12 @@ This project is managed using a `Makefile` to streamline common tasks.
 
 ### **Prerequisites**
 
-*   Go (1.22+)
-*   Node.js and npm
-*   Python (3.12+)
-*   Google Cloud SDK
-*   `protoc` compiler
+*   **Go (1.22+)**: Required for the backend microservice.
+*   **Node.js & npm**: Required for building and running the React frontend.
+*   **Python (3.12+)**: Required for the Report Generation service.
+*   **Google Cloud SDK**: Required for Cloud Run, Cloud Functions, and Pub/Sub interactions.
+*   **protoc**: Protocol Buffer compiler with Go and Python plugins.
+*   **Docker**: Required for running integration tests via Testcontainers.
 
 ### **Initial Setup**
 
@@ -176,13 +179,20 @@ This project is managed using a `Makefile` to streamline common tasks.
     ```bash
     make all
     ```
-    This will install all necessary Go, npm, and Python dependencies.
+    *Note: This will attempt to build both backend and frontend components. If npm is not installed, the frontend build will fail.*
 
 2.  **Generate Protobuf Code:**
     If you modify the `.proto` file, you must regenerate the Go and Python code:
     ```bash
     make proto
     ```
+
+### **Troubleshooting**
+
+*   **Python venv issues**: If `make reporter-install-deps` fails with a venv error, ensure `python3-venv` (or the version-specific equivalent like `python3.13-venv`) is installed on your system.
+*   **Python dependency index**: The Makefile uses the public PyPI index for reliability. If you are behind a corporate proxy, you may need to configure your pip configuration.
+*   **Missing npm**: If `npm` is not in your PATH, frontend targets will fail. Ensure Node.js is installed and `npm` is accessible.
+*   **Firestore/Pub/Sub Emulators**: Integration tests require the Google Cloud SDK emulators. You can install them via `gcloud components install cloud-firestore-emulator pubsub-emulator`.
 
 ### **Running the Services**
 
