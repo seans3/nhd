@@ -1155,7 +1155,7 @@ const file_proto_nhd_proto_rawDesc = "" +
 	"PROCESSING\x10\x02\x12\r\n" +
 	"\tCOMPLETED\x10\x03\x12\n" +
 	"\n" +
-	"\x06FAILED\x10\x04B/Z-github.com/seans3/nhd/proto/gen/go;nhd_reportb\x06proto3"
+	"\x06FAILED\x10\x04B7Z5github.com/seans3/nhd/backend/proto/gen/go;nhd_reportb\x06proto3"
 
 var (
 	file_proto_nhd_proto_rawDescOnce sync.Once
