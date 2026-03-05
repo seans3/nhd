@@ -22,6 +22,14 @@ This plan outlines the steps to transform the current NHD service prototype into
     - **SendGrid**: Finalize the implementation for automated report delivery.
 5. **Observability**: Implement trace IDs across Go/Python boundaries to debug specific report runs effectively.
 
+## Development Directives
+
+To maintain high engineering standards throughout the project's evolution, all development must adhere to the following directives:
+
+1.  **Mandatory Unit Testing**: Every new feature or bug fix must be accompanied by comprehensive unit tests. Tests should be written in isolation, using mocks for external dependencies (Firestore, Pub/Sub, etc.).
+2.  **Test Coverage Goal**: Aim for a minimum of **80% unit test coverage** across all service components (Go Backend and Python Reporter).
+3.  **Strict Linting Policy**: Never commit or merge code that does not pass the project's linting requirements (`go vet`, `pylint`, or equivalent). Verification must be performed manually or via the Makefile before every milestone completion.
+
 ---
 
 ## Milestone Plan
