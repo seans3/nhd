@@ -16,7 +16,7 @@ VENV_DIR=reporter/venv
 
 # Proto variables
 PROTOC=protoc
-PROTOC_PY=$(VENV_DIR)/bin/python -m grpc_tools.protoc
+PROTOC_PY=../$(VENV_DIR)/bin/python3 -m grpc_tools.protoc
 
 .PHONY: all backend-build backend-run backend-test frontend-install frontend-start frontend-build proto reporter-install-deps clean help
 
@@ -35,8 +35,10 @@ help: ## Display this help screen
 
 proto: reporter-install-deps ## Generate Go and Python code from proto definitions
 	@echo "--- Generating Go protobuf code..."
-	@cd backend && $(PROTOC) --go_out=. --go_opt=paths=source_relative proto/nhd.proto
+	@mkdir -p backend/proto/gen/go
+	@cd backend && $(PROTOC) --go_out=proto/gen/go --go_opt=module=github.com/seans3/nhd/backend/proto/gen/go proto/nhd.proto
 	@echo "--- Generating Python protobuf code..."
+	@mkdir -p reporter/proto/gen/python
 	@cd backend && $(PROTOC_PY) -I=proto --python_out=../reporter/proto/gen/python --grpc_python_out=../reporter/proto/gen/python proto/nhd.proto
 	@echo "Protobuf code generated."
 

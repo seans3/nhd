@@ -45,16 +45,25 @@ To maintain high engineering standards throughout the project's evolution, all d
 All milestones follow the requirement: **Compile/Test/Lint + E2E + Manual Verification.**
 
 ### Milestone 1: Geospatial Core & Expanded Data Model
-- **Goal**: Establish the production data foundation.
-- **Tasks**:
-    1. Update `nhd.proto` to include `SupplementalResults`, `TaxResults`, and `EnvironmentalResults`.
-    2. Provision and configure Cloud SQL (PostGIS).
-    3. Implement a data ingestion pipeline for real CA shapefiles (FEMA, CAL FIRE, CGS).
-    4. Refactor `reporter/main.py` to perform PIP analysis against PostGIS.
+- **Goal**: Move from a GeoJSON-based prototype to a scalable PostGIS-backed engine with an expanded data model covering 20+ hazard layers.
+- **Phase 1: Data Model Expansion (Protobuf)**:
+    - Update `nhd.proto` with `SupplementalResults`, `TaxResults`, and `EnvironmentalResults`.
+    - Regenerate code via `make proto`.
+    - Update Go Backend (`datastore` and `api`) to support new fields.
+- **Phase 2: Geospatial Infrastructure (PostGIS)**:
+    - Provision Cloud SQL (PostGIS) and define schema.
+    - Implement `GIST` spatial indexing.
+    - Create ingestion scripts for CA hazard shapefiles.
+- **Phase 3: Python Reporter Refactoring**:
+    - Integrate `SQLAlchemy` and `GeoAlchemy2`.
+    - Refactor analysis logic to use SQL-based Point-in-Polygon (PIP) queries.
+    - Implement tests for 20+ expanded layers.
+- **Phase 4: Quality & Validation**:
+    - Achieve 80%+ unit test coverage for new logic.
+    - Run full E2E loop and verify Firestore output.
 - **Verification**: 
-    - Unit tests for new proto definitions.
-    - Integration tests verifying PIP analysis against PostGIS for known coordinates.
-    - `make test` & `make lint`.
+    - `make test`, `make test-e2e`, and `make lint`.
+    - Manual verification of expanded hazard flags in Firestore.
 
 ### Milestone 2: Statutory PDF Generation & GCS Integration
 - **Goal**: Produce the actual legal document.
