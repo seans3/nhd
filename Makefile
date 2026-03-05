@@ -116,8 +116,10 @@ clean: ## Remove all generated files and build artifacts
 	@echo "--- Cleaning up..."
 	@rm -f backend/$(BINARY_NAME)
 	@rm -rf backend/proto/gen
-	@rm -rf reporter/proto/gen
+	@rm -rf reporter/proto
 	@rm -rf frontend/node_modules
 	@rm -rf frontend/build
 	@rm -rf $(VENV_DIR)
+	@find . -type d -name "__pycache__" -exec rm -rf {} +
+	@find . -type f -name "*.py[co]" -delete
 	@echo "Cleanup complete."
